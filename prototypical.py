@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
+from torch.optim import Adam
+from torch.optim.lr_scheduler import StepLR
 from torchvision.transforms import Compose, Resize, RandomRotation, ToTensor
 
 torch.manual_seed(1234)
@@ -55,6 +57,7 @@ N_Q = 5
 data = torchvision.datasets.Omniglot(root='omniglot', download=True)
 data = list(data)
 X, y = zip(*data) # TODO: use this to make code cleaner
+#X = torch.cat(X)
 train_data = data[:1200]
 test_data = data[1200:]
 
@@ -80,5 +83,17 @@ embed = nn.Sequential(
     nn.BatchNorm2d(num_features=64),
     nn.ReLU(),
     nn.MaxPool2d(2),
-    *(3*conv_block) # repeat conv_block 3 times
+    *(3*conv_block), # repeat conv_block 3 times
+    nn.Flatten()
 )
+
+model = PrototypicalNetwork(len(torch.unique(y)), embed, embed_shape=(64,))
+
+optim = Adam(model.parameters(), lr=0.001)
+lr_scheduler = StepLR(optim, step_size=2000, gamma=0.5)
+
+#for i, batch in enumerate(train_loader):
+#    loss = model.episode(batch_labels, )
+#    optimizer.zero_grad()
+#    loss.backward()
+#    optimizer.step()
