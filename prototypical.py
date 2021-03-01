@@ -1,5 +1,6 @@
 """
 """ # TODO: docstring
+import argparse
 import numpy as np
 import torch
 import torch.nn as nn
@@ -70,11 +71,12 @@ class PrototypicalNetwork(nn.Module):
         # 6. for every query sample:
         # 7.    loss += -log p(y=k|x)
     
-    def fit(self, x, y):
-        pass
-    
-    def predict(self, x, y):
-        pass
+    def predict(self, support, support_labels, queries):
+        """
+        """ # TODO: docstring
+        preds = self(support, queries).argmax(dim=-1)
+        preds = support_labels[preds,0]
+        return preds
 
 def episode_split(samples, labels, n_way, n_shot, n_query):
     """
@@ -112,77 +114,88 @@ def episode_split(samples, labels, n_way, n_shot, n_query):
 #     - 1-shot: 96.0%
 #     - 5-shot: 98.9%
 
-# TODO: make main() and fix these via args:
-#validation_size = 500
-#epochs = 1000
-batch_size = 250
-n_way = 60
-n_shot = 5
-n_query = 5
-test_way = 5
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--max-epoch', type=int, default=2000)
+    #parser.add_argument('--validation-percent', type=int, default=20)
+    parser.add_argument('--shot', type=int, default=1)
+    parser.add_argument('--query', type=int, default=15)
+    parser.add_argument('--train-way', type=int, default=60)
+    parser.add_argument('--test-way', type=int, default=5)
+    #parser.add_argument('--gpu', default='0')
+    args = parser.parse_args()
 
-transform = Compose([
-    Resize((28,28)),
-    ToTensor()
-])
+    transform = Compose([
+        Resize((28,28)),
+        ToTensor()
+    ])
 
-data = torchvision.datasets.Omniglot(root='omniglot', download=True, transform=transform)
-X, y = zip(*data) # TODO: use this to make code cleaner
+    data = torchvision.datasets.Omniglot(root='omniglot', download=True, transform=transform)
+    X, y = zip(*data)
 
-X = torch.stack(X)
-y = torch.tensor(y)
+    X = torch.stack(X)
+    y = torch.tensor(y)
 
-X_train, y_train = X[:14460], y[:14460] # 75 % split (there aren't >1200 chars in the dataset as described in the paper)
-X_test, y_test = X[14460:], y[14460:]
+    test_split_idx = int(max(y) * 0.75)
+    X_train = X[y < test_split_idx]
+    y_train = y[y < test_split_idx]
+    X_test = X[y >= test_split_idx]
+    y_test = y[y >= test_split_idx]
 
-rotations = torch.empty(4, *X_train.shape)
-for i, deg in enumerate([0, 90, 180, 270]):
-    transform = RandomRotation((deg,deg))
-    rotated = transform(X_train)
-    rotations[i] = rotated
-X_train = rotations.flatten(0,1)
-y_train = y_train.repeat(4)
+    X_train, y_train = X[:14460], y[:14460] # 75 % split (there aren't >1200 chars in the dataset as described in the paper)
+    X_test, y_test = X[14460:], y[14460:]
 
-#train_loader = DataLoader(augmented_train_data, batch_size=batch_size)
+    rotations = torch.empty(4, *X_train.shape)
+    for i, deg in enumerate([0, 90, 180, 270]):
+        transform = RandomRotation((deg,deg))
+        rotated = transform(X_train)
+        rotations[i] = rotated
+    X_train = rotations.flatten(0,1)
+    y_train = y_train.repeat(4)
 
-# TODO: Figure out padding_mode for conv2d layer
-conv_block = [
-    nn.Conv2d(64, 64, 3, padding=1),
-    nn.BatchNorm2d(num_features=64),
-    nn.ReLU(),
-    nn.MaxPool2d(2)
-]
-embed = nn.Sequential(
-    nn.Conv2d(1, 64, 3, padding=1),
-    nn.BatchNorm2d(num_features=64),
-    nn.ReLU(),
-    nn.MaxPool2d(2),
-    *(3*conv_block), # repeat conv_block 3 times
-    nn.Flatten()
-)
+    # TODO: Figure out padding_mode for conv2d layer
+    conv_block = [
+        nn.Conv2d(64, 64, 3, padding=1),
+        nn.BatchNorm2d(num_features=64),
+        nn.ReLU(),
+        nn.MaxPool2d(2)
+    ]
+    embed = nn.Sequential(
+        nn.Conv2d(1, 64, 3, padding=1),
+        nn.BatchNorm2d(num_features=64),
+        nn.ReLU(),
+        nn.MaxPool2d(2),
+        *(3*conv_block), # repeat conv_block 3 times
+        nn.Flatten()
+    )
 
-model = PrototypicalNetwork(embed, embed_shape=(64,))
+    model = PrototypicalNetwork(embed, embed_shape=(64,))
 
-optim = Adam(model.parameters(), lr=0.001)
-lr_scheduler = StepLR(optim, step_size=2000, gamma=0.5)
+    optim = Adam(model.parameters(), lr=0.001)
+    lr_scheduler = StepLR(optim, step_size=2000, gamma=0.5)
 
-model.train()
-for epoch in range(1000):
-    support, support_labels, queries, queries_labels = episode_split(X_train, y_train, n_way, n_shot, n_query)
-    loss = model.episode(support, queries)
-    print(loss.item())
-    optim.zero_grad()
-    loss.backward()
-    optim.step()
+    model.train()
+    for epoch in range(args.max_epoch):
+        support, _, queries, _ = episode_split(X_train, y_train, args.train_way, args.n_shot, args.n_query)
+        loss = model.episode(support, queries)
+        print(loss.item())
+        optim.zero_grad()
+        loss.backward()
+        optim.step()
+        lr_scheduler.step()
+        #with torch.no_grad(): # TODO: validation
 
-model.eval()
-eval_acc = []
-for test_it in range(1000):
-    support, support_labels, queries, query_labels = episode_split(X_test, y_test, test_way, n_shot, n_query)
-    preds = model(support, queries).argmax(dim=-1)
-    preds = support_labels[preds,0]
-    truth = query_labels.flatten()
-    acc = (preds == truth).sum() / len(preds)
-    eval_acc.append(acc)
-    print(test_it, "\t- accuracy:", acc.item())
-print(np.mean(eval_acc))
+    model.eval()
+    eval_acc = []
+    for test_it in range(1000):
+        support, support_labels, queries, query_labels = episode_split(X_test, y_test, args.test_way, args.n_shot, args.n_query)
+        preds = model.predict(support, support_labels, queries)
+        truth = query_labels.flatten()
+        acc = (preds == truth).sum() / len(preds)
+        eval_acc.append(acc)
+        print(test_it, "\t- accuracy:", acc.item())
+    print(np.mean(eval_acc))
+
+
+if __name__=="__main__":
+    main()
