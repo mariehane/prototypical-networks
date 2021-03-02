@@ -186,18 +186,16 @@ def main():
     y_train = y_train.repeat(4)
 
     # TODO: Figure out padding_mode for conv2d layer
-    conv_block = [
-        nn.Conv2d(64, 64, 3, padding=1),
-        nn.BatchNorm2d(num_features=64),
-        nn.ReLU(),
-        nn.MaxPool2d(2)
-    ]
+    def conv_block(in_dim=64, out_dim=64):
+        return [
+            nn.Conv2d(in_dim, out_dim, 3, padding=1),
+            nn.BatchNorm2d(num_features=out_dim),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        ]
+    conv_blocks = conv_block(1,64) + 3*conv_block(64,64)
     embed = nn.Sequential(
-        nn.Conv2d(1, 64, 3, padding=1),
-        nn.BatchNorm2d(num_features=64),
-        nn.ReLU(),
-        nn.MaxPool2d(2),
-        *(3*conv_block), # repeat conv_block 3 times
+        *conv_blocks,
         nn.Flatten()
     )
 
