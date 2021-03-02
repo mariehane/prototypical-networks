@@ -10,8 +10,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
 from torchvision.transforms import Compose, Resize, RandomRotation, ToTensor
-
-torch.manual_seed(1234)
+from tqdm import tqdm
 
 class PrototypicalNetwork(nn.Module):
     def __init__(self, embed, embed_shape, d=torch.cdist):
@@ -125,6 +124,8 @@ def main():
     #parser.add_argument('--gpu', default='0')
     args = parser.parse_args()
 
+    torch.manual_seed(1234)
+
     transform = Compose([
         Resize((28,28)),
         ToTensor()
@@ -174,28 +175,28 @@ def main():
     optim = Adam(model.parameters(), lr=0.001)
     lr_scheduler = StepLR(optim, step_size=2000, gamma=0.5)
 
-    model.train()
-    for epoch in range(args.max_epoch):
-        support, _, queries, _ = episode_split(X_train, y_train, args.train_way, args.n_shot, args.n_query)
-        loss = model.episode(support, queries)
-        print(loss.item())
-        optim.zero_grad()
-        loss.backward()
-        optim.step()
-        lr_scheduler.step()
-        #with torch.no_grad(): # TODO: validation
+    for i in range(10):
+        model.train()
+        for epoch in tqdm(range(args.max_epoch)):
+            support, _, queries, _ = episode_split(X_train, y_train, args.train_way, args.shot, args.query)
+            loss = model.episode(support, queries)
+            tqdm.write(f"Epoch {epoch}:\tloss: {loss.item()}")
+            optim.zero_grad()
+            loss.backward()
+            optim.step()
+            lr_scheduler.step()
+            #with torch.no_grad(): # TODO: validation
 
-    model.eval()
-    eval_acc = []
-    for test_it in range(1000):
-        support, support_labels, queries, query_labels = episode_split(X_test, y_test, args.test_way, args.n_shot, args.n_query)
-        preds = model.predict(support, support_labels, queries)
-        truth = query_labels.flatten()
-        acc = (preds == truth).sum() / len(preds)
-        eval_acc.append(acc)
-        print(test_it, "\t- accuracy:", acc.item())
-    print(np.mean(eval_acc))
-
+        model.eval()
+        eval_acc = []
+        for test_it in tqdm(range(1000)):
+            support, support_labels, queries, query_labels = episode_split(X_test, y_test, args.test_way, args.shot, args.query)
+            preds = model.predict(support, support_labels, queries)
+            truth = query_labels.flatten()
+            acc = (preds == truth).sum() / len(preds)
+            eval_acc.append(acc)
+            tqdm.write(f"{test_it}\t- accuracy: {acc.item()}")
+        print(np.mean(eval_acc))
 
 if __name__=="__main__":
     main()
