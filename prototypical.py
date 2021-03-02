@@ -134,30 +134,24 @@ def episode_split(samples, labels, n_way, n_shot, n_query):
     y_queries = y[:, n_shot:]
     return X_support, y_support, X_queries, y_queries
 
-# Results:
-# - Dataset: Omniglot [7] (1263 chars, 20 examples of each char, from 50 alphabets)
-#     - Vinyals et. al: resize grayscale imgs to 28x28 and augment with rotations in multiples of 90 degrees 
-#         - 1200 chars plus rotations for training (4800 classes[?] in total)
-#         - embedding architecture: 4 conv blocks of [64-filter 3x3 conv, BN, ReLU, 2x2 max-pooling]
-#         - Train using Adam with initial learning rate of 10^-3, halved every 2000 episodes.
-# - Accuracy averaged over 1000 randomly generated episodes from test set.
-# - 5-way accuracy:
-#     - 1-shot: 98.8% 
-#     - 5-shot: 99.7%
-# - 20-way accuracy:
-#     - 1-shot: 96.0%
-#     - 5-shot: 98.9%
-
 def main():
+    """Trains and evaluates Prototypical Network on Omniglot dataset as specified in the original paper.
+
+    - Resize grayscale images to 28x28 and augment with rotations in multiples of 90 degrees.
+    - Embedding architecture: 4 conv blocks of [64-filter 3x3 conv, BN, ReLU, 2x2 max-pooling].
+    - Train using Adam with initial learning rate of 10^-3, halved every 2000 episodes.
+    - Average accuracy over 1000 randomly generated episodes from test set.
+    """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--max-epoch', type=int, default=2000)
+    parser.add_argument('--episodes', type=int, default=4000)
     #parser.add_argument('--validation-percent', type=int, default=20)
     parser.add_argument('--shot', type=int, default=1)
-    parser.add_argument('--query', type=int, default=15)
+    parser.add_argument('--query', type=int, default=1)
     parser.add_argument('--train-way', type=int, default=60)
     parser.add_argument('--test-way', type=int, default=5)
     #parser.add_argument('--gpu', default='0')
     args = parser.parse_args()
+    print("Args:", args)
 
     torch.manual_seed(1234)
 
@@ -212,28 +206,26 @@ def main():
     optim = Adam(model.parameters(), lr=0.001)
     lr_scheduler = StepLR(optim, step_size=2000, gamma=0.5)
 
-    for i in range(10):
-        model.train()
-        for epoch in tqdm(range(args.max_epoch)):
-            support, _, queries, _ = episode_split(X_train, y_train, args.train_way, args.shot, args.query)
-            loss = model.episode(support, queries)
-            tqdm.write(f"Epoch {epoch}:\tloss: {loss.item()}")
-            optim.zero_grad()
-            loss.backward()
-            optim.step()
-            lr_scheduler.step()
-            #with torch.no_grad(): # TODO: validation
+    model.train()
+    for train_it in tqdm(range(args.episodes)):
+        support, _, queries, _ = episode_split(X_train, y_train, args.train_way, args.shot, args.query)
+        loss = model.episode(support, queries)
+        tqdm.write(f"Episode {train_it}:\tloss: {loss.item()}")
+        optim.zero_grad()
+        loss.backward()
+        optim.step()
+        lr_scheduler.step()
 
-        model.eval()
-        eval_acc = []
-        for test_it in tqdm(range(1000)):
-            support, support_labels, queries, query_labels = episode_split(X_test, y_test, args.test_way, args.shot, args.query)
-            preds = model.predict(support, support_labels, queries)
-            truth = query_labels.flatten()
-            acc = (preds == truth).sum() / len(preds)
-            eval_acc.append(acc)
-            tqdm.write(f"{test_it}\t- accuracy: {acc.item()}")
-        print(np.mean(eval_acc))
+    model.eval()
+    eval_acc = []
+    for test_it in tqdm(range(1000)):
+        support, support_labels, queries, query_labels = episode_split(X_test, y_test, args.test_way, args.shot, args.query)
+        preds = model.predict(support, support_labels, queries)
+        truth = query_labels.flatten()
+        acc = (preds == truth).sum() / len(preds)
+        eval_acc.append(acc)
+        tqdm.write(f"{test_it}\t- accuracy: {acc.item()}")
+    print(np.mean(eval_acc))
 
 if __name__=="__main__":
     main()
