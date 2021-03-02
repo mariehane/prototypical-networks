@@ -1,5 +1,8 @@
+"""A re-implementation of "Prototypical Networks for Few-shot Learning"
+by Jake Snell, Kevin Swersky, and Richard S. Zemel.
+
+See: https://arxiv.org/abs/1703.05175
 """
-""" # TODO: docstring
 import argparse
 import numpy as np
 import torch
@@ -14,11 +17,13 @@ from tqdm import tqdm
 
 class PrototypicalNetwork(nn.Module):
     def __init__(self, embed, embed_shape, d=torch.cdist):
+        """Initialize a Prototypical Network.
+
+        Args:
+            embed (callable): embedding function
+            embed_shape (tuple): output shape of the embedding function
+            d (callable): distance metric (default: euclidean)
         """
-        :param: embed () - embedding function 
-        :param: embed_shape () - output shape of the embedding function
-        :param: d () - distance metric (default: euclidean)
-        """ # TODO: docstring
         super(PrototypicalNetwork, self).__init__()
         self.embed = embed
         self.embed_shape = embed_shape
@@ -26,6 +31,15 @@ class PrototypicalNetwork(nn.Module):
         self.prototypes = None
     
     def forward(self, support, queries):
+        """Compute prediction logits for query samples.
+
+        Args:
+            support: tensor of shape [n_way, n_shot, *in_dim]
+            queries: tensor of shape [n_way, n_query, *in_dim]
+
+        Returns:
+            logits: tensor of shape [n_way*n_query, n_way]
+        """
         n_way = support.shape[0] #len(torch.unique(support_labels))
         n_shot = support.shape[1] #len(support) // n_way
 
@@ -39,17 +53,18 @@ class PrototypicalNetwork(nn.Module):
         return torch.softmax(-dist, dim=1)
 
     def episode(self, support, queries):
+        """Perform a training episode and compute negative log-likelihood loss.
+
+        Args:
+            support: tensor of shape [n_way, n_shot, *in_dim]
+            queries: tensor of shape [n_way, n_query, *in_dim]
+
+        Returns:
+            loss (float): tensor containing single value
         """
-        :param n_way: - no. of classes used in episode (N_c)
-        :param n_shot: - no. of support samples used for each class (N_S)
-        :param n_query: - no. of query samples used for each class (N_Q)
-        typical recommendations: try to match params with test-time specs. E.g. for 1-shot learning with 5 classes in test set, use N_C = 5 and N_S = 1
-        it can be beneficial to use higher N_C
-        usually best to have N_S equal for training and testing
-        """ # TODO: write docstring
-        n_way = support.shape[0] #len(torch.unique(support_labels))
-        n_shot = support.shape[1] #len(support) // n_way
-        n_query = queries.shape[1] #len(X_queries) // n_way
+        n_way = support.shape[0]
+        n_shot = support.shape[1]
+        n_query = queries.shape[1]
 
         support = support.flatten(0,1)
         queries = queries.flatten(0,1)
@@ -61,25 +76,45 @@ class PrototypicalNetwork(nn.Module):
         loss = F.cross_entropy(-dist, query_labels)
 
         return loss
-
-        # 1. pick N_C classes from `classes`
-        # 2. for every class:
-        # 3.    S_K <- select N_S points from samples with class
-        # 4.    Q_K <- select N_S points from (samples\S_K) with class (XXX: shouldn't it just be the remaining instead of sampling N_Q points?)
-        # 5.    c_k <- average of f_theta(x_i) # compute prototype
-        # 6. for every query sample:
-        # 7.    loss += -log p(y=k|x)
     
     def predict(self, support, support_labels, queries):
+        """Compute prediction labels for query samples.
+
+        Args:
+            support: tensor of shape [n_way, n_shot, *in_dim]
+            support_labels: tensor of shape [n_way, n_shot]
+            queries: tensor of shape [n_way, n_query, *in_dim]
+
+        Returns:
+            predictions: tensor of shape [n_way*n_query]
         """
-        """ # TODO: docstring
         preds = self(support, queries).argmax(dim=-1)
         preds = support_labels[preds,0]
         return preds
 
 def episode_split(samples, labels, n_way, n_shot, n_query):
+    """Sample data to facilitate n-way k-shot learning.
+
+    Typical recommendations are to match params with test-time specs [0].
+    E.g. for 1-shot learning with 5 classes in test set, use n_way = 5 and n_shot = 1.
+    However, [0] found that it can be beneficial to use higher n_way for training than testing.
+    For Prototypical Networks it is usually best to have n_shot equal for training and testing.
+
+    [0]: https://arxiv.org/abs/1703.05175
+
+    Args:
+        samples: tensor of shape [n_samples, *in_dim]
+        labels: tensor of shape [n_samples]
+        n_way (int): no. of classes used in episode (N_c)
+        n_shot (int): no. of support samples used for each class (N_S)
+        n_query (int): no. of query samples used for each class (N_Q)
+
+    Returns:
+        X_support: support samples of shape [n_way, n_shot, *in_dim]
+        y_support: support labels of shape [n_way, n_shot]
+        X_queries: query samples of shape [n_way, n_query, *in_dim]
+        y_queries: query labels of shape [n_way, n_query]
     """
-    """# TODO: docstring
     X = torch.empty(n_way, n_shot+n_query, *samples.shape[1:])
     y = torch.zeros(n_way, n_shot+n_query, dtype=torch.long)
 
@@ -143,9 +178,11 @@ def main():
     X_test = X[y >= test_split_idx]
     y_test = y[y >= test_split_idx]
 
-    X_train, y_train = X[:14460], y[:14460] # 75 % split (there aren't >1200 chars in the dataset as described in the paper)
+    # 75/25 split (there aren't >1200 chars in the dataset as described in the paper)
+    X_train, y_train = X[:14460], y[:14460]
     X_test, y_test = X[14460:], y[14460:]
 
+    # augment traning images with rotations in multiples of 90 degrees
     rotations = torch.empty(4, *X_train.shape)
     for i, deg in enumerate([0, 90, 180, 270]):
         transform = RandomRotation((deg,deg))
