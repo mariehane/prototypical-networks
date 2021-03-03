@@ -160,23 +160,17 @@ def main():
         ToTensor()
     ])
 
-    data = torchvision.datasets.Omniglot(root='omniglot', download=True, transform=transform)
-    X, y = zip(*data)
+    background = torchvision.datasets.Omniglot(root='.', download=True, transform=transform)
+    evaluation = torchvision.datasets.Omniglot(root='.', background=False, download=True, transform=transform)
+    X_train, y_train = zip(*background)
+    X_test, y_test = zip(*evaluation)
 
-    X = torch.stack(X)
-    y = torch.tensor(y)
+    X_train = torch.stack(X_train)
+    X_test = torch.stack(X_test)
+    y_train = torch.tensor(y_train)
+    y_test = torch.tensor(y_test)
 
-    test_split_idx = int(max(y) * 0.75)
-    X_train = X[y < test_split_idx]
-    y_train = y[y < test_split_idx]
-    X_test = X[y >= test_split_idx]
-    y_test = y[y >= test_split_idx]
-
-    # 75/25 split (there aren't >1200 chars in the dataset as described in the paper)
-    X_train, y_train = X[:14460], y[:14460]
-    X_test, y_test = X[14460:], y[14460:]
-
-    # augment traning images with rotations in multiples of 90 degrees
+    # augment training images with rotations in multiples of 90 degrees
     rotations = torch.empty(4, *X_train.shape)
     for i, deg in enumerate([0, 90, 180, 270]):
         transform = RandomRotation((deg,deg))
