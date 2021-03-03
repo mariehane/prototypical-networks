@@ -146,7 +146,8 @@ def main():
     parser.add_argument('--episodes', type=int, default=4000)
     #parser.add_argument('--validation-percent', type=int, default=20)
     parser.add_argument('--shot', type=int, default=1)
-    parser.add_argument('--query', type=int, default=1)
+    parser.add_argument('--train-query', type=int, default=5)
+    parser.add_argument('--test-query', type=int, default=1)
     parser.add_argument('--train-way', type=int, default=60)
     parser.add_argument('--test-way', type=int, default=5)
     #parser.add_argument('--gpu', default='0')
@@ -200,7 +201,7 @@ def main():
 
     model.train()
     for train_it in tqdm(range(args.episodes)):
-        support, _, queries, _ = episode_split(X_train, y_train, args.train_way, args.shot, args.query)
+        support, _, queries, _ = episode_split(X_train, y_train, args.train_way, args.shot, args.train_query)
         loss = model.episode(support, queries)
         tqdm.write(f"Episode {train_it}:\tloss: {loss.item()}")
         optim.zero_grad()
@@ -211,7 +212,7 @@ def main():
     model.eval()
     eval_acc = []
     for test_it in tqdm(range(1000)):
-        support, support_labels, queries, query_labels = episode_split(X_test, y_test, args.test_way, args.shot, args.query)
+        support, support_labels, queries, query_labels = episode_split(X_test, y_test, args.test_way, args.shot, args.test_query)
         preds = model.predict(support, support_labels, queries)
         truth = query_labels.flatten()
         acc = (preds == truth).sum() / len(preds)
