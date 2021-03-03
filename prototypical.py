@@ -40,8 +40,8 @@ class PrototypicalNetwork(nn.Module):
         Returns:
             logits: tensor of shape [n_way*n_query, n_way]
         """
-        n_way = support.shape[0] #len(torch.unique(support_labels))
-        n_shot = support.shape[1] #len(support) // n_way
+        n_way = support.shape[0]
+        n_shot = support.shape[1]
 
         support = support.flatten(0,1)
         queries = queries.flatten(0,1)
@@ -180,17 +180,19 @@ def main():
     X_train = rotations.flatten(0,1)
     y_train = y_train.repeat(4)
 
-    # TODO: Figure out padding_mode for conv2d layer
+    # define embedding architecture
     def conv_block(in_dim=64, out_dim=64):
-        return [
+        return nn.Sequential(
             nn.Conv2d(in_dim, out_dim, 3, padding=1),
             nn.BatchNorm2d(num_features=out_dim),
             nn.ReLU(),
             nn.MaxPool2d(2)
-        ]
-    conv_blocks = conv_block(1,64) + 3*conv_block(64,64)
+        )
     embed = nn.Sequential(
-        *conv_blocks,
+        conv_block(1,64),
+        conv_block(64,64),
+        conv_block(64,64),
+        conv_block(64,64),
         nn.Flatten()
     )
 
